@@ -1,0 +1,153 @@
+version: "3.7"
+services:
+  # This service MUST have the name "kdc-kadmin" otherwise every kerberos client won't be able to talk with the KDC.
+  # If you would like to change the name edit the file configureKerberosClient.sh and change the configurations
+  # "kdc" and "admin_server" in the /etc/krb5.conf section.
+  # NOTE;
+  # env_file kerberos.env" is optional.
+  # In case no .env file is supplied, nor any environment variable is set, the following values will be used
+  #   REALM=EXAMPLE.COM
+  #   SUPPORTED_ENCRYPTION_TYPES=aes256-cts-hmac-sha1-96:normal
+  #   KADMIN_PRINCIPAL=kadmin/admin
+  #   KADMIN_PASSWORD=MITiys4K5
+
+  kdc-kadmin:
+    build: ./kdc-kadmin
+    hostname: kdc-admin
+    env_file: kerberos.env
+    volumes:
+      # This is needed otherwise there won't be enough entropy to generate a new kerberos realm
+      - /dev/urandom:/dev/random
+
+  kerberos-client:
+    build: ./kerberos-client
+    hostname: kerberos-client
+    env_file: kerberos.env
+    depends_on:
+      - kdc-kadmin
+    volumes:
+      - ./private:/etc/kafka/secrets
+
+  kafka:
+    image: confluentinc/cp-kafka
+    hostname: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:32181"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,SASL_SSL://kafka:9094"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      ZOOKEEPER_SASL_ENABLED: "FALSE"
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_TOOLS_LOG4J_LOGLEVEL: WARN
+
+      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: PLAINTEXT
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAINTEXT
+      KAFKA_SASL_ENABLED_MECHANISMS: GSSAPI
+      KAFKA_SASL_KERBEROS_SERVICE_NAME: kafka
+
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: creds
+      KAFKA_SSL_KEY_CREDENTIALS: creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: creds
+      # Disable ssl hostname checking, this is ok in a test setup, where the ssl cert might not match the hostname. This should also be done on the endpoints (http://kafka.apache.org/documentation.html#security_ssl)
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "" 
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf -Djava.security.krb5.conf=/etc/kafka/secrets/host_krb.conf -Dsun.security.krb5.debug=true
+    depends_on:
+      - kdc-kadmin
+      - kerberos-client
+    networks:
+      - default
+    links:
+      - zookeeper
+    volumes:
+      - ./private:/etc/kafka/secrets
+
+  kafka-create-topics:
+    image: confluentinc/cp-kafka
+    depends_on:
+      - kafka
+    # We defined a dependency on "kafka", but `depends_on` will NOT wait for the
+    # dependencies to be "ready" before starting the "kafka-create-topics"
+    # container;  it waits only until the dependencies have started.  Hence we
+    # must control startup order more explicitly.
+    # See https://docs.docker.com/compose/startup-order/
+    command: |
+      bash -c 'echo Waiting for Kafka to be ready... && \
+      cub kafka-ready -b kafka:9092 1 20 && \
+      until kafka-topics --create --topic SyslogTopic --partitions 1 --replication-factor 1 --if-not-exists --zookeeper zookeeper:32181; do echo "retry creation"; done && \
+      sleep infinity'
+    environment:
+      # The following settings are listed here only to satisfy the image's requirements.
+      # We override the image's `command` anyways, hence this container will not start a broker.
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_TOOLS_LOG4J_LOGLEVEL: WARN
+    networks:
+      - default
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 32181
+      ZOOKEEPER_SERVER_ID: 1
+    networks:
+      - default
+
+  test-producer:
+    image: confluentinc/cp-kafka
+    hostname: producer
+    depends_on:
+      - kafka
+      - kafka-create-topics
+    command: |
+      bash -c "echo Waiting for Kafka to be ready... && \
+      cub kafka-ready -b kafka:9092 1 20 && \
+      echo Kafka is ready, waiting 5 seconds before publishing messages && sleep 5 && \
+      seq 10 | kafka-console-producer --broker-list kafka:9094 --topic SyslogTopic --producer.config \
+      /etc/kafka/secrets/host.producer.ssl.sasl.config && \
+      echo 'Produced 10 messages.'"
+    environment:
+      # The following settings are listed here only to satisfy the image's requirements.
+      # We override the image's `command` anyways, hence this container will not start a broker.
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_TOOLS_LOG4J_LOGLEVEL: WARN
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/producer_jaas.conf -Djava.security.krb5.conf=/etc/kafka/secrets/host_krb.conf"
+    networks:
+      - default
+    volumes:
+      - ./private:/etc/kafka/secrets
+
+  test-consumer:
+    image: confluentinc/cp-kafka
+    hostname: consumer
+    depends_on:
+      - kafka
+      - kafka-create-topics
+    command: |
+      bash -c "echo Waiting for Kafka to be ready... && \
+      cub kafka-ready -b kafka:9092 1 20 && \
+      echo Kafka is ready, waiting 10 seconds before consuming messages && sleep 10 && \
+      kafka-console-consumer --bootstrap-server kafka:9094 --topic SyslogTopic --from-beginning --consumer.config /etc/kafka/secrets/host.consumer.ssl.sasl.config"
+    environment:
+      # The following settings are listed here only to satisfy the image's requirements.
+      # We override the image's `command` anyways, hence this container will not start a broker.
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_TOOLS_LOG4J_LOGLEVEL: WARN
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/consumer_jaas.conf -Djava.security.krb5.conf=/etc/kafka/secrets/host_krb.conf" 
+    networks:
+      - default
+    volumes:
+      - ./private:/etc/kafka/secrets
+  
+
+networks:
+  default:
+
