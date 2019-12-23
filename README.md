@@ -14,15 +14,18 @@ The setup is as follows;
 - kafka-create-topics   to generate topic, using PLAINTEXT protocol over port 9092
 - omkafka_gssapi        for producing (syslog)messages on the kafka topic, using SASL_SSL on port 9094
 - imkafka_gssapi        for consuming (syslog)messages from the kafka topic, using SASL_SSL on port 9094
-- volume:./private      for hosting all 
-                          *.keytab,                       used for client/server authentication
-                          host_krb.conf,                  used for general kerberos(krb5.conf) config, shared by all containers 
-                          *.jaas.conf,                    used for kafka, test-producer, test-consumer kerberos configuration
-                          *.ssl.sasl.conf,                used for test-producer and test-consumer ssl and SASL configuration
-                          truststores,                    used for storing kafka, test-producer and test-consumer public-key material
-                          keystores,                      used for storing kafka, consumer and producer ssl private keys
-                          ca*.crt certificate(PEM)        used to sign/check certificates against 
-                          client *.crt certificates(PEM)  used to enable ssl communication on rsyslogd hosts
+- volume:./private      for hosting all config and key material
+
+File                            | Purpose
+----                            | -------
+*.keytab,                       | used for client/server authentication
+host_krb.conf,                  | used for general kerberos(krb5.conf) config, shared by all containers 
+*.jaas.conf,                    | used for kafka, test-producer, test-consumer kerberos configuration
+*.ssl.sasl.conf,                | used for test-producer and test-consumer ssl and SASL configuration
+truststores,                    | used for storing kafka, test-producer and test-consumer public-key material
+keystores,                      | used for storing kafka, consumer and producer ssl private keys
+ca*.crt certificate(PEM)        | used to sign/check certificates against 
+client *.crt certificates(PEM)  | used to enable ssl communication on rsyslogd hosts
 
 # Getting started
 
