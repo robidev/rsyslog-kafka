@@ -30,7 +30,7 @@ client *.crt certificates(PEM)  | used to enable ssl communication on rsyslogd h
 # Getting started
 
 generate truststores and keystores for broker and clients(consumer/producer)  
- 
+
 ```cd private  
 ./create-certs.sh  
 cd ..```  
