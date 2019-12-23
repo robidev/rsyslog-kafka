@@ -1,8 +1,10 @@
+#rsyslog-kafka docker-compose setup
 This is a docker-compose setup for rsyslogd and kafka using GSSAPI with SASL_SSL (TLS + kerberos) for testing purposes
 most data is from https://docs.confluent.io/4.0.0/installation/docker/docs/tutorials/clustered-deployment-sasl.html
 using github source: https://github.com/confluentinc/cp-docker-images/examples/kafka-cluster-sasl
 kerberos setup comes from https://github.com/ist-dsi/docker-kerberos
 
+#Setup
 The setup is as follows;
 - kdc-admin             for handing out tickets
 - kerberos-client       to generate tickets for kafka, the consumer and producer
@@ -20,24 +22,23 @@ The setup is as follows;
                           ca*.crt certificate(PEM)        used to sign/check certificates against 
                           client *.crt certificates(PEM)  used to enable ssl communication on rsyslogd hosts
 
-Getting started
----------------
+#Getting started
 generate truststores and keystores for broker and clients(consumer/producer)
 
-# cd private
-# ./create-certs.sh
-# cd ..
+`cd private
+./create-certs.sh
+cd ..`
 
 build images
-# docker-compose build
+`docker-compose build`
 
 run docker compose file
-# docker-compose up
+`docker-compose up`
 
 if all goes well, the kdc-admin and kafka container should be running, 3 keytabs should be generated in the volume ./private
 
 
-TODO: 
+#TODO
 - generate host_krb.conf on the fly instead of static file
 - set correct permissions, and do not share keytabs across containers
 - ensure correct signing data, hostnames, so that KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM works as it should
